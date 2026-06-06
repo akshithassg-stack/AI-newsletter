@@ -314,8 +314,7 @@ with tab_generate:
 
     elif generation_mode == "Batch topics":
         st.caption("Enter one topic per line.")
-        default_batch = "\n".join(t["topic"] for t in sample_topics[:5])
-        topics_raw = st.text_area("Topics (one per line)", value=default_batch, height=180)
+        topics_raw = st.text_area("Topics (one per line)", value="", height=180)
         col_c2, _ = st.columns([2, 4])
         with col_c2:
             selected_cat2 = st.selectbox("Category override", ["Auto-detect"] + CATEGORIES)
