@@ -1,0 +1,388 @@
+================================================================================
+  GREEN STEEL AI NEWS GENERATION SYSTEM
+  Technical Documentation & User Manual
+  Version 1.0 | June 2026
+================================================================================
+
+
+OVERVIEW
+--------
+This system automatically generates professional news articles about the green
+steel industry. It uses a six-stage AI pipeline powered by Anthropic Claude to
+research live news, classify topics, write articles in wire-service journalism
+style, and score them for quality before publishing.
+
+The system covers 15 industry categories — from renewable energy and hydrogen
+production to trade policy and project finance — and produces output in three
+formats: PDF, Markdown, and JSON.
+
+
+================================================================================
+HOW THE PIPELINE WORKS
+================================================================================
+
+When you enter a topic and click Generate, the system runs six agents in
+sequence. Each agent does one job and passes its output to the next.
+
+
+  [User Input]
+       |
+       v
+  [1. Research Agent]  ──>  fetches live news articles (2026 only)
+       |
+       v
+  [2. Category Agent]  ──>  classifies the topic into 1 of 15 categories
+       |
+       v
+  [3. Writer Agent]    ──>  writes a 500-700 word draft article
+       |
+       v
+  [4. Humanizer Agent] ──>  rewrites to wire-service journalism style
+       |
+       v
+  [5. Quality Agent]   ──>  scores the article 0-10 on five dimensions
+       |
+       v
+  [6. Output]          ──>  saves to News Feed, available as PDF/MD/JSON
+
+
+================================================================================
+AGENT-BY-AGENT BREAKDOWN
+================================================================================
+
+
+AGENT 1 — RESEARCH AGENT
+--------------------------
+Purpose: Find real, recent news articles about the topic.
+
+How it works:
+  The agent tries three data sources in order (fallback chain):
+
+  Tier 1 — NewsAPI (https://newsapi.org)
+    - Requires a NEWS_API_KEY set in the .env file
+    - Searches for the topic combined with category-specific keywords
+    - Filters to articles published on or after 1 January 2026
+    - Returns up to 20 articles sorted by publication date
+
+  Tier 2 — Google News RSS (https://news.google.com/rss/search)
+    - Free, no API key required
+    - Always runs alongside NewsAPI as a supplement
+    - Searches two queries: "{topic} green steel" and "{category terms} 2026"
+    - Returns up to 15 articles per query
+
+  Tier 3 — Category RSS Feeds
+    - Runs only if fewer than 8 articles have been gathered from Tiers 1 and 2
+    - Uses curated RSS feeds per category (e.g. hydrogeninsight.com,
+      steelwatch.org, cleantechnica.com, mining.com, carbonbrief.org)
+    - Returns up to 8 articles per feed
+
+  After gathering, the agent:
+    - Filters out any article published before 1 January 2026
+    - Removes duplicate headlines
+    - Scores each article for relevance (keyword match + topic match + recency)
+    - Selects the top 15 articles
+    - Labels each article with its age: "today", "3 days ago", "[OLDER SOURCE]"
+
+  The agent then sends the labelled articles to Claude with strict instructions:
+    - Use ONLY facts from articles dated "today", "yesterday", or "X days ago"
+    - Facts from [OLDER SOURCE] articles may only be used as background context
+    - Do not invent any figure not present in the articles
+    - Return: topic, facts[], sources[], suggested_angle, key_players[]
+
+Data sources used:
+  - NewsAPI:           https://newsapi.org/v2/everything
+  - Google News RSS:   https://news.google.com/rss/search
+  - Hydrogen Insight:  https://www.hydrogeninsight.com/rss
+  - SteelWatch:        https://steelwatch.org/feed/
+  - CleanTechnica:     https://cleantechnica.com/feed/
+  - Carbon Brief:      https://carbonbrief.org/feed
+  - Mining.com:        https://www.mining.com/feed/
+  - World Steel Assoc: https://www.worldsteel.org/rss.xml
+  - Recycling Today:   https://www.recyclingtoday.com/rss/all-news.rss
+  - Fuel Cell Works:   https://www.fuelcellsworks.com/feed/
+
+
+AGENT 2 — CATEGORY AGENT
+--------------------------
+Purpose: Classify the topic into exactly one of 15 industry categories.
+
+The 15 categories are:
+   1.  Renewable Energy
+   2.  Hydrogen Production & Technology
+   3.  Green Iron & Low-Carbon Feedstocks
+   4.  Circular Economy (Scrap)
+   5.  CCS & CCUS
+   6.  Steel Demand, Procurement & End Markets
+   7.  Steel Prices & Green Premiums
+   8.  Raw Material Prices
+   9.  Clean Energy Logistics & Storage
+  10.  Project Finance & Investment
+  11.  Trade, Tariffs & Regulations
+  12.  Climate Policy & Environment
+  13.  Corporate Offtake
+  14.  Partnerships & M&A
+  15.  Green Steel Projects & Plant Development
+
+How it works:
+  - Sends the research brief (topic, facts, key players, suggested angle)
+    to Claude with the list of 15 categories
+  - Claude returns: category name, confidence score (0.0-1.0), one-sentence
+    reasoning explaining why that category fits
+  - If the user selects a category override in the UI, the LLM call is skipped
+    and that category is used directly with confidence 1.0
+
+
+AGENT 3 — WRITER AGENT
+------------------------
+Purpose: Write a first draft of the news article.
+
+How it works:
+  - Receives the research brief and the assigned category
+  - Each category has its own writing guidance specifying what the lead must
+    contain. Examples:
+      * Renewable Energy: must include MW/GW figure, named counterparties,
+        contract duration, link to steel or hydrogen output
+      * Project Finance: must lead with capital amount, break down
+        equity/debt/grant, name lead investors and financial close date
+      * Green Steel Projects: must include capacity (Mt/yr), technology route
+        (H2-DRI, EAF, MOE), location, CAPEX, first-production date
+  - Writer rules (non-negotiable):
+      * First sentence is the news event — not background, not context
+      * Every paragraph must have at least one named company and one number
+      * At least one sentence under 9 words; at least one over 30 words
+      * Closing paragraph is always a direct quote
+      * 500-700 words
+      * No bullet points, no subheadings, no bold text in paragraphs
+  - Format: Headline / Dateline / 4-5 body paragraphs / closing quote
+
+Style target: Metal Bulletin, Argus Metals, Kallanish Steel
+
+
+AGENT 4 — HUMANIZER AGENT
+---------------------------
+Purpose: Rewrite the draft to eliminate AI writing patterns.
+
+How it works:
+  - Acts as a veteran wire-service editor (Reuters Commodities desk)
+  - Applies a kill list of banned AI phrases:
+      significant, notably, importantly, landscape, leverage, robust,
+      game-changer, paradigm, milestone, paving the way, underscores,
+      showcases, furthermore, moreover, it is worth noting, transformative,
+      unprecedented, exciting, in today's world, going forward
+  - Structural rules:
+      * Never open a paragraph with a gerund (-ing word)
+      * No paragraph starting with "The company / The project / The deal"
+        three times in a row
+      * Vary sentence length — one sentence under 8 words, one over 35 words
+      * Paragraphs: 1 to 5 sentences, not all the same length
+  - Numbers: every number from the draft must appear in the rewrite
+  - Quotes: format must be — "Quote text," said Firstname Lastname,
+    Title at Organisation
+  - The closing quote must be a judgement or reaction, not a press-release line
+  - Returns only the rewritten article — no commentary
+
+
+AGENT 5 — QUALITY AGENT
+-------------------------
+Purpose: Score the article before it is published.
+
+Five dimensions scored 0-10:
+
+  Newsworthiness  — Is there a specific recent event? Score 0 if it reads
+                    like background analysis.
+
+  Specificity     — Are there concrete figures (amounts, %, dates)?
+                    Below 5 if any paragraph has no number or named company.
+
+  Readability     — Does it read like wire-service journalism or an AI report?
+                    Deduct 2 points per AI filler phrase found.
+
+  Structure       — Does it open with the sharpest fact?
+                    Is the closing a real quote?
+                    Deduct points if it opens with context or background.
+
+  Category Fit    — Does the dominant content match the assigned category?
+
+Overall score = average of the five dimensions.
+Pass threshold = 7.0
+
+  Score 0-4:  Unacceptable — would not publish
+  Score 5-6:  Needs significant rewrite
+  Score 7-8:  Publishable with minor edits
+  Score 9-10: Publish as-is
+
+If the score is below 7.0, the agent returns specific feedback: what is wrong
+and exactly how to fix it.
+
+
+AGENT 6 — OUTPUT / STORAGE
+----------------------------
+Purpose: Save the article and make it available for download.
+
+The article is stored in Streamlit session state and displayed in the News Feed
+tab. Each article card shows:
+  - Headline and dateline
+  - Category badge (colour-coded per category)
+  - Quality badge: PASS (green) or FAIL (red) with overall score
+  - Full article body
+  - Sources list
+  - Download buttons: PDF | Markdown | JSON
+
+Bulk download: if multiple articles are generated (batch or sweep mode),
+a "Download All as ZIP" button packages all articles in all three formats.
+
+
+================================================================================
+GENERATION MODES
+================================================================================
+
+SINGLE ARTICLE
+  Enter one topic. Click Generate Article.
+  The full 6-agent pipeline runs for that topic.
+  Time: approximately 60-90 seconds.
+
+BATCH TOPICS
+  Enter multiple topics, one per line.
+  Click Generate Batch.
+  Each topic runs through the full pipeline sequentially.
+  Results appear in the News Feed as they complete.
+
+CATEGORY SWEEP
+  Click Run Category Sweep.
+  The system generates one article per category (15 total) using a
+  pre-set topic relevant to that category.
+  Useful for producing a full edition covering all industry segments.
+  Time: approximately 15-20 minutes.
+
+
+================================================================================
+OUTPUT FORMATS
+================================================================================
+
+PDF
+  Generated using ReportLab (Python library).
+  Contains: headline, dateline, category, quality score, body text, sources.
+  Unicode-safe — handles em dashes, euro signs, and special characters.
+
+MARKDOWN (.md)
+  Plain text with Markdown formatting.
+  Contains: headline, metadata block, full body, sources list.
+  Suitable for CMS import or documentation systems.
+
+JSON (.json)
+  Machine-readable structured data.
+  Contains: topic, category, quality scores (all 5 dimensions), article text,
+  sources list, key players, timestamp.
+  Suitable for database ingestion or API responses.
+
+
+================================================================================
+TECHNOLOGY STACK
+================================================================================
+
+Language:        Python 3.11
+AI Model:        Anthropic Claude (claude-sonnet-4-6) via Anthropic API
+                 https://www.anthropic.com
+Web Framework:   Streamlit — https://streamlit.io
+Data Models:     Pydantic v2 — https://docs.pydantic.dev
+News Fetching:   feedparser — https://feedparser.readthedocs.io
+                 requests — https://requests.readthedocs.io
+HTML Parsing:    BeautifulSoup4 — https://www.crummy.com/software/BeautifulSoup/
+PDF Generation:  ReportLab — https://www.reportlab.com
+Environment:     python-dotenv — https://saurabh-kumar.com/python-dotenv/
+Deployment:      Render.com — https://render.com
+
+
+================================================================================
+ENVIRONMENT VARIABLES
+================================================================================
+
+Required:
+  ANTHROPIC_API_KEY   — Anthropic API key for Claude access
+                        Get one at: https://console.anthropic.com
+
+Optional:
+  NEWS_API_KEY        — NewsAPI key for real-time news (Tier 1 source)
+                        Get one at: https://newsapi.org
+                        Free plan: 100 requests/day, articles from last 29 days
+                        Without this key, the system uses Google News RSS only
+
+
+================================================================================
+DEPLOYMENT (RENDER.COM)
+================================================================================
+
+Repository:  https://github.com/akshithassg-stack/AI-newsletter
+Branch:      main
+Runtime:     Python 3.11
+Build:       pip install -r requirements.txt
+Start:       streamlit run app.py --server.port $PORT --server.address 0.0.0.0
+             --server.headless true
+
+Environment variables must be set in the Render dashboard under
+Environment > Secret Files or Environment Variables.
+
+Auto-deploy: enabled — every push to main triggers a new deployment.
+
+
+================================================================================
+DATA FLOW SUMMARY
+================================================================================
+
+  USER INPUT (topic text)
+       |
+       | topic string
+       v
+  RESEARCH AGENT
+       | fetches: NewsAPI + Google News RSS + Category RSS
+       | filters: 2026-only, dedup, relevance score
+       | sends to Claude: labelled articles + strict instructions
+       | output: ResearchInput {topic, facts[], sources[], angle, players[]}
+       |
+       v
+  CATEGORY AGENT
+       | input: ResearchInput
+       | sends to Claude: research brief + list of 15 categories
+       | output: (category_name, confidence, reasoning)
+       |
+       v
+  WRITER AGENT
+       | input: ResearchInput + category
+       | sends to Claude: category-specific style guide + reference article
+       | output: 500-700 word draft article (headline + dateline + body + quote)
+       |
+       v
+  HUMANIZER AGENT
+       | input: draft article + category
+       | sends to Claude: banned phrases list + wire-service rules
+       | output: rewritten article
+       |
+       v
+  QUALITY AGENT
+       | input: rewritten article + category
+       | sends to Claude: 5-dimension scoring rubric
+       | output: QualityScore {newsworthiness, specificity, readability,
+       |         structure, category_fit, overall, passed, feedback}
+       |
+       v
+  OUTPUT
+       | stored in session state
+       | displayed in News Feed tab
+       | downloadable as PDF / Markdown / JSON
+
+
+================================================================================
+CONTACT & REPOSITORY
+================================================================================
+
+Deployment repository:  https://github.com/akshithassg-stack/AI-newsletter
+Development repository: https://github.com/akshitharenu/content-generation
+
+Anthropic API docs:     https://docs.anthropic.com
+NewsAPI docs:           https://newsapi.org/docs
+Streamlit docs:         https://docs.streamlit.io
+Render deployment docs: https://render.com/docs
+
+================================================================================
+END OF DOCUMENT
+================================================================================
