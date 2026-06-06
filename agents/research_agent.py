@@ -22,7 +22,8 @@ from utils.helpers import extract_json
 
 logger = logging.getLogger(__name__)
 
-CUTOFF_DAYS = 90
+# Only accept articles published on or after this date
+CUTOFF_FROM = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 # ---------------------------------------------------------------------------
 # Category search terms — used by both NewsAPI and Google News
@@ -93,10 +94,11 @@ def _parse_date(raw: str) -> Optional[datetime]:
     return None
 
 
-def _is_recent(pub_dt: Optional[datetime], days: int = CUTOFF_DAYS) -> bool:
+def _is_recent(pub_dt: Optional[datetime], days: int = None) -> bool:
+    """Return True only if article is from 2026 or has unknown date."""
     if pub_dt is None:
-        return True
-    return pub_dt >= datetime.now(timezone.utc) - timedelta(days=days)
+        return True  # keep if date unknown
+    return pub_dt >= CUTOFF_FROM
 
 
 def _age_label(pub_dt: Optional[datetime]) -> str:
@@ -137,7 +139,7 @@ def fetch_newsapi(topic: str, category: str, max_items: int = 15) -> list[dict]:
 
     cat_terms = CATEGORY_SEARCH_TERMS.get(category, FALLBACK_SEARCH_TERMS)
     query = f"{topic} OR ({cat_terms})"
-    from_date = (datetime.now(timezone.utc) - timedelta(days=29)).strftime("%Y-%m-%d")
+    from_date = CUTOFF_FROM.strftime("%Y-%m-%d")  # 2026-01-01
 
     params = {
         "q":        query,
@@ -212,7 +214,7 @@ def _fetch_feed(url: str, max_items: int = 15) -> list[dict]:
 def fetch_google_news(topic: str, category: str, max_items: int = 20) -> list[dict]:
     cat_terms = CATEGORY_SEARCH_TERMS.get(category, FALLBACK_SEARCH_TERMS)
     entries: list[dict] = []
-    for query in [f"{topic} green steel", f"{cat_terms} green steel 2025"]:
+    for query in [f"{topic} green steel", f"{cat_terms} green steel 2026"]:
         url = GOOGLE_NEWS_RSS.format(query=urllib.parse.quote(query))
         batch = _fetch_feed(url, max_items=max_items)
         entries.extend(batch)
@@ -285,7 +287,7 @@ def gather_live_news(category: str, topic: str, max_articles: int = 15) -> list[
             source_used = "Category RSS"
 
     # Filter to recent only
-    all_entries = [e for e in all_entries if _is_recent(e.get("pub_dt"), days=CUTOFF_DAYS)]
+    all_entries = [e for e in all_entries if _is_recent(e.get("pub_dt"))]
 
     # Dedup + rank
     unique = _dedup(all_entries)
@@ -367,7 +369,7 @@ class ResearchAgent:
             LIVE NEWS ARTICLES (each labelled with age — prioritise the freshest ones):
             {news_context}
 
-            INSTRUCTIONS:
+            STRICT INSTRUCTIONS - 2026 SOURCES ONLY:
             - Use ONLY facts from articles labelled "today", "yesterday", or "X days ago" as your
               primary sources. These are confirmed recent news.
             - Facts from articles labelled "[OLDER SOURCE]" may be used as background context only.
